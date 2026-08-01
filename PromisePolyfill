@@ -1,0 +1,143 @@
+class Mypromise {
+  constructor(executor) {
+    // <-- 1. executor parameter goes here
+    this.status = "pending";
+    this.value = undefined;
+
+    // callback trays
+    this.onFulfilledCallbacks = [];
+    this.OnRejectedCallbacks = []; // Keep track of capitalization
+
+    this.resolve = (result) => {
+      if (this.status !== "pending") return;
+      this.status = "fulfilled";
+      this.value = result; // <-- 2. Matched with 'result'
+      console.log("Inside class resolve function");
+      queueMicrotask(() => {
+        this.onFulfilledCallbacks.forEach((callback) => callback(this.value));
+      });
+    };
+
+    this.reject = (err) => {
+      if (this.status !== "pending") return;
+      this.status = "rejected";
+      this.value = err;
+      console.log("Inside class reject function");
+      queueMicrotask(() => {
+        this.OnRejectedCallbacks.forEach((callback) => callback(err)); // <-- 2. Matched with 'err'
+      });
+    };
+
+    // call the executor fn immediately
+    try {
+      executor(this.resolve, this.reject);
+    } catch (err) {
+      this.reject(err);
+    }
+  }
+
+  then(onfulfilled, onrejected) {
+    // <-- 1. Removed 'function' keyword
+    console.log(
+      "you are inside the then block of class fn",
+      " -- Status is-- ",
+      this.status,
+    );
+    if (this.status === "fulfilled") {
+      // <-- 2. Added 'this.'
+      queueMicrotask(() => {
+        onfulfilled(this.value);
+      });
+    } else if (this.status === "rejected") {
+      // <-- 3. Explicit check for pre-rejected promises
+      queueMicrotask(() => {
+        onrejected(this.value);
+      });
+    } else {
+      // This is "pending" - write it down on the clipboard
+      this.onFulfilledCallbacks.push(onfulfilled);
+      this.OnRejectedCallbacks.push(onrejected);
+    }
+  }
+
+  then(onfulfilled, onrejected) {
+    // 1. Instantly create and return a BRAND NEW promise instance!
+    const abcd =  new Mypromise((nextResolve, nextReject) => {
+      // This is the interior execution manager
+      const handleExecution = () => {
+        try {
+          // Run the customer's callback with the old value
+          const result = onfulfilled(this.value);
+
+          // Pass the result downstream to resolve Buzzer 2!
+          nextResolve(result);
+        } catch (err) {
+          // If the callback crashes, reject Buzzer 2!
+          nextReject(err);
+        }
+      };
+
+    console.log("inside the then new promise object" );
+      // 2. Decide what to do based on Buzzer 1's status
+      if (this.status === "fulfilled") {
+        queueMicrotask(() => handleExecution());
+      } else if (this.status === "rejected") {
+        // (Similar handling for rejection)
+        queueMicrotask(() => {
+          onrejected(this.value);
+        });
+      } else {
+        // If Buzzer 1 is still cooking, we save the execution manager
+        // onto Buzzer 1's clipboard array!
+        this.onFulfilledCallbacks.push(() => handleExecution());
+      }
+    });
+
+   // console.log("Mypromise instance", abcd)
+    return abcd;
+  }
+}
+
+const executor = (first, second) => {
+  console.log("this is executor fn");
+
+  first("this is resolved value");
+  second("this is rejected value");
+
+  console.log("executor fn completed");
+};
+
+const promise = new Mypromise(executor);
+/**
+ * ouput at this statge will be - 
+this is executor fn
+Inside class resolve function
+executor fn completed
+ */
+const onfulfill = (result) => {
+  console.log("i am the promise result returned from resolve --- ", result);
+};
+
+const onreject = (result) => {
+  console.log(
+    "reject: i am the promise result returned from reject --- ",
+    result,
+  );
+};
+
+//promise.then(onfulfill, onreject);
+
+promise.then(onfulfill, onreject)//.then(onfulfill, onreject);
+
+/**
+ * o/p at this stage will be - 
+ * 
+this is executor fn
+Inside class resolve function
+executor fn completed
+you are inside the then block of class fn  -- Status is--  fulfilled
+
+i am the promise result returned from resolve ---  this is resolved value
+ * 
+ * 
+ */

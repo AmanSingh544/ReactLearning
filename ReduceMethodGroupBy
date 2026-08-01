@@ -1,0 +1,38 @@
+const employees = [
+  { department: "IT", city: "Delhi", name: "A" },
+  { department: "IT", city: "Mumbai", name: "B" },
+  { department: "HR", city: "Delhi", name: "C" },
+  { department: "IT", city: "Delhi", name: "D" },
+  { department: "HR", city: "Mumbai", name: "E" },
+];
+
+/* group them by department and inside them by city 
+ ex - 
+{
+  IT: {
+       Delhi: [
+           {department: "IT", city: "Delhi", name: "A"},
+           {department: "IT", city: "Delhi", name: "D"}
+       ]
+    }
+}
+*/
+
+const res = employees.reduce((acc, {department, city, name}) => {
+  acc[department] ??={};
+  acc[department][city] ??=[]
+
+  acc[department][city].push({department, city, name})
+  return acc;
+}, {});
+
+console.table(res);
+
+const groupBydept = Object.groupBy(employees, ({department, city, name}, index) => {
+  return department
+});
+console.log(groupBydept)
+
+const groupBydeptAsKeyAndValueAsGroupByCity =  Object.entries(groupBydept).map(([dept, arr], index) => [[dept] ,Object.groupBy(arr, ({city}) => city)])
+console.log(groupBydeptAsKeyAndValueAsGroupByCity)
+console.log(Object.fromEntries(groupBydeptAsKeyAndValueAsGroupByCity))

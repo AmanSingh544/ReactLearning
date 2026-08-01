@@ -1,0 +1,213 @@
+import React, { useState, useMemo } from "react";
+
+// Immutable master dataset loaded once (e.g., from an API or static JSON config)
+interface DataItem {
+  id: number;
+  name: string;
+  [key: string]: any;
+}
+interface SubCategoryItem extends DataItem {
+  categoryId: number;
+}
+interface ProductItem extends DataItem {
+  subCategoryId: number;
+}
+
+interface ApplicationData {
+  categories: DataItem[];
+  subCategories: SubCategoryItem[];
+  items: ProductItem[];
+}
+
+const MASTER_DATA: ApplicationData = {
+  categories: [
+    { id: 1, name: "Automotive" },
+    { id: 2, name: "Home & Kitchen" },
+  ],
+  subCategories: [
+    { id: 101, categoryId: 1, name: "Electric Vehicles" },
+    { id: 102, categoryId: 1, name: "SUVs" },
+    { id: 103, categoryId: 2, name: "Appliances" },
+    { id: 104, categoryId: 2, name: "Furniture" },
+  ],
+  items: [
+    { id: 1001, subCategoryId: 101, name: "Tesla Model 3" },
+    { id: 1002, subCategoryId: 101, name: "Rivian R1T" },
+    { id: 1003, subCategoryId: 102, name: "Jeep Wrangler" },
+    { id: 1004, subCategoryId: 102, name: "Ford Explorer" },
+    { id: 1005, subCategoryId: 103, name: "Air Fryer" },
+    { id: 1006, subCategoryId: 103, name: "Blender" },
+    { id: 1007, subCategoryId: 104, name: "Dining Table" },
+    { id: 1008, subCategoryId: 104, name: "Sofa Bed" },
+  ],
+};
+
+// Strict structural definition of the dependent select dropdown hierarchy
+interface DropdownConfig {
+  key: keyof ApplicationData;
+  label: string;
+  parentKey: keyof ApplicationData | null;
+  lookupField: string | null;
+}
+
+const DROPDOWN_CHAIN: DropdownConfig[] = [
+  { key: "categories", label: "Category", parentKey: null, lookupField: null },
+  {
+    key: "subCategories",
+    label: "Sub-Category",
+    parentKey: "categories",
+    lookupField: "categoryId",
+  },
+  {
+    key: "items",
+    label: "Product Item",
+    parentKey: "subCategories",
+    lookupField: "subCategoryId",
+  },
+];
+
+export default function ProductionDependentSelect() {
+  // Production Rule: Maintain an independent, localized single object source of truth for selections
+  const [selections, setSelections] = useState<Record<string, string[]>>({
+    categories: [],
+    subCategories: [],
+    items: [],
+  });
+
+  const handleDropdownChange = (name: string, targetValue: string) => {
+    const targetIndex = DROPDOWN_CHAIN.findIndex(
+      (config) => config.key === name,
+    );
+    if (targetIndex === -1) return;
+
+    setSelections((prevSelections) => {
+      const currentList = prevSelections[name] || [];
+      const updatedList = currentList.includes(targetValue)
+        ? currentList.filter((v) => v !== targetValue) // Untoggle item
+        : [...currentList, targetValue];
+
+      const updatedSelections = {
+        ...prevSelections,
+        [name]: updatedList,
+      };
+
+      // Explicit down-chain clearing: Ensure everything lower than the altered level is purged
+      for (let i = targetIndex + 1; i < DROPDOWN_CHAIN.length; i++) {
+        updatedSelections[DROPDOWN_CHAIN[i].key] = [];
+      }
+      return updatedSelections;
+    });
+  };
+
+  // Derive visible dropdown option arrays strictly during render.
+  // Wrap with useMemo to isolate processing expenses across state mutations.
+  const runtimeDropdownLists = useMemo(() => {
+    const lists: Record<string, DataItem[]> = {};
+
+    DROPDOWN_CHAIN.forEach((config) => {
+      debugger;
+      // Base root tier is always fully exposed
+      if (!config.parentKey || !config.lookupField) {
+        lists[config.key] = MASTER_DATA[config.key];
+        return;
+      }
+
+      // Check parent status
+      const parentSelectedIds = selections[config.parentKey]; // [1, 2]
+      if (!parentSelectedIds.length) {
+        lists[config.key] = []; // Enforce empty options if parent node selection is missing
+        return;
+      }
+
+      // Strict parent child matching pipeline execution
+      const masterPool = MASTER_DATA[config.key] || [];
+      lists[config.key] = masterPool.filter((item) =>
+        parentSelectedIds.includes(String(item[config.lookupField!])),
+      );
+    });
+
+    return lists;
+  }, [selections]);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: "1.5rem",
+        padding: "2rem",
+        fontFamily: "sans-serif",
+      }}
+    >
+      {DROPDOWN_CHAIN.map((config) => {
+        const availableOptions = runtimeDropdownLists[config.key] || [];
+        const isControlDisabled =
+          config.parentKey !== null && !selections[config.parentKey].length;
+
+        return (
+          <div
+            key={config.key}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+              padding: "5px",
+              borderRadius: "20px",
+              border: "2px solid green",
+              minWidth: "200px",
+            }}
+          >
+            <label
+              htmlFor={config.key}
+              style={{
+                fontSize: "0.875rem",
+                fontWeight: 600,
+                color: "#374151",
+              }}
+            >
+              {config.label}
+            </label>
+            <label
+              htmlFor={config.key}
+              style={{
+                padding: "0.5rem",
+                borderRadius: "0.375rem",
+                border: "1px solid #d1d5db",
+                backgroundColor: isControlDisabled ? "#f3f4f6" : "#ffffff",
+                cursor: isControlDisabled ? "not-allowed" : "pointer",
+                fontSize: "1rem",
+              }}
+            >
+              <input type="checkbox" checked={!selections[config.key]}  onChange={() => setSelections(prev => ({...prev, [config.key] : MASTER_DATA[config.key].map(item => item.id)}))}/>
+              Select All
+            </label>
+            {availableOptions.map((option) => (
+              <div
+                onClick={() =>
+                  handleDropdownChange(config.key, String(option.id))
+                }
+                style={{
+                  padding: "0.5rem",
+                  borderRadius: "0.375rem",
+                  border: "1px solid #d1d5db",
+                  backgroundColor: isControlDisabled ? "#f3f4f6" : "#ffffff",
+                  cursor: isControlDisabled ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                }}
+              >
+                <input
+                  id={config.key}
+                  name={config.key}
+                  checked={selections[config.key].includes(String(option.id))}
+                  disabled={isControlDisabled}
+                  type="checkbox"
+                  key={option.id}
+                />
+                {option.name}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

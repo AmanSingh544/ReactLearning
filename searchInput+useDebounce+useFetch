@@ -1,0 +1,85 @@
+import React, { useState, useEffect } from "react";
+//Combine: search input using useDebounce + useFetch together.
+
+function useDebounce(value, delay = 200) {
+  const [localvalue, setValue] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setValue(value), delay);
+
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return localvalue;
+}
+
+function useFetch(url) {
+  const [state, setState] = useState({
+    data: null,
+    error: null,
+    loading: false,
+  });
+
+  useEffect(() => {
+    if (!url) {
+      setState({ data: null, error: null, loading: false });
+      return;
+    }
+
+ // Set loading to true immediately when a valid URL arrives
+    setState(prev => ({ ...prev, error: null, loading: true }));
+    const controller = new AbortController();
+    const { signal } = controller;
+    const fetchData = async () => {
+      try {
+        const res = await fetch(url, { signal });
+        if (!res.ok) throw new Error("HTTP error");
+        const data = await res.json();
+        setState(prev => ({ ...prev, data: data }));
+      } catch (err) {
+        if (err.name !== "AbortError")
+          setState(prev => ({ ...prev,  error: err.message }));
+      } finally {
+        setState(prev => ({ ...prev,  loading: false }));
+      }
+    };
+
+    fetchData();
+
+    return () => controller.abort();
+  }, [url]);
+
+  return state;
+}
+
+export default function SearchComponent() {
+  const [query, setQuery] = useState("");
+  const debouncedValue = useDebounce(query, 500);
+  const url = debouncedValue
+    ? `https://api.escuelajs.co/api/v1/products/?title=${encodeURIComponent(debouncedValue)}`
+    : `https://api.escuelajs.co/api/v1/products`;
+  const { data, loading, error } = useFetch(url);
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+  };
+
+  return (
+    <>
+      <label htmlFor="search">Search:</label>
+      <input value={query} onChange={handleInputChange} />
+      {loading && <span>Loading ...</span>}
+      {error && <span>Error: {error}</span>}
+      {!loading && data && (
+        <div>
+          <ol>
+            {data?.map((item) => (
+              <li key={item.id}>{item.title}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </>
+  );
+}

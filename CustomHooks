@@ -1,0 +1,157 @@
+import { useState } from "react";
+
+function debounce(fn, delay) {
+  let timer;
+
+  return function (args) {
+    if (timer) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(() => fn(args), delay);
+  };
+}
+
+function useDebounce(fn, delay) {
+  let timerref = useRef(null);
+  let callbackRef = useRef(fn);
+
+  useEffect(() => {
+    callbackRef.current = fn;
+  }, [fn]); // update callback ref whenever fn changes
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerref.current);
+    };
+  }, []); // clear time when unmounts
+
+  // Return a stable, memoized version of the debounced function
+  return useCallback(
+    (...args) => {
+      if (timerref.current) clearTimeout(timerref.current);
+      timerref.current = setTimeout(() => {
+        callbackRef.current(...args);
+      }, delay);
+    },
+    [delay],
+  );
+}
+
+function useLocalStorage(key, intialValue) {
+  //1.READ ONCE: use lazy intialization function to avoid read on every re-render
+  const [storedvalue, setStoredvalue] = useState(() => {
+    try {
+      const value = window.localStorage.getItem(key);
+      return value ? JSON.parse(value) : intialValue;
+    } catch (err) {
+      console.error(
+        "Error during fetching local storage, Error: ",
+        err.message,
+      );
+      return intialValue;
+    }
+  });
+
+  // 2. WRITE ON CHANGE: Intercepts updates to sync with state & disk
+  const setvalue = useCallback(
+    (value) => {
+      try {
+        // since, value may be 5 or prev => prev + 5
+        const valueToStore =
+          value instanceof "Function" ? value(storedvalue) : value;
+        setStoredvalue(valueToStore); // react will know now, that localstorage has been updated and thus will re-render
+        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      } catch (err) {
+        console.error("Error while setting the key and value ,", err.messsage);
+      }
+    },
+    [key, intialValue],
+  );
+
+  return [storedvalue, setvalue];
+}
+
+function useFetch(url) {
+  const [data, setData] = useState(null);
+  const [loading, setloading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  useEffect(async () => {
+    try {
+      const response = await fetch(url, { signal });
+      if (!response.ok) {
+        throw new Error("HTTP error wile fecthing");
+      }
+      const data = await response.json();
+      setData(data);
+    } catch (err) {
+      // 3. Ignore errors caused by our intentional aborting
+      if (err.name !== "AbortError") {
+        setError(err.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+
+    // cleanup
+    return () => {
+      controller.abort();
+    };
+  }, [url]);
+
+  return { data, loading, error };
+}
+
+/*
+Build useToggle(initial) → [on, toggle] (5 min warm-up).
+Build useOnlineStatus() → listens to online/offline window events, cleanup required.
+Combine: search input using useDebounce + useFetch together.
+Prove state isolation: render two <Counter/>s using the same useCounter hook — show independent counts.
+*/
+
+function useToggle(initial) {
+  const [on, setToogle] = useState(initial);
+
+  const toggle = useCallback((value) => {
+    setToggle((prev) => {
+      if (value instanceof Function) {
+        return value(prev);
+      }
+      return typeof value === "boolean" ? value : !prev;
+    });
+  }, []);
+
+  return [on, toggle];
+}
+
+function useOnlineStatus() {
+  const [isOnline, setIsonline] = useState(() => {
+    typeof navigator !== "undefined" ? navigator.onLine : true;
+  });
+
+  /*
+   The navigator is a built-in global object provided by the web browser. It contains detailed information about the user's browser application, operating system, and current environment capabilities.
+   */
+  useEffect(() => {
+    const handleStatusChange = () => {
+      setIsonline(navigator.onLine);
+    };
+
+    window.addEventListener("online", handleStatusChange);
+    window.addEventListener("offline", handleStatusChange);
+
+    return () => {
+      window.removeEventListener("online", handleStatusChange);
+      window.removeEventListener("offline", handleStatusChange);
+    };
+  }, []);
+
+  return isOnline;
+}
+
+export default function App() {
+  return <Counter name="React" />;
+}
